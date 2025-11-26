@@ -30,6 +30,13 @@ These files are distributed under the same license as Wireshark (the GNU General
 3. [Gurux DLMS C++ implementation](https://github.com/Gurux/Gurux.DLMS.cpp)
 4. [GitHub:bearxiong99 Wireshark DLMS plugin template](https://github.com/bearxiong99/wireshark-dlms)
 
-## Fork 后修改点
+## 修改点
 1. 适配wireshark 4.6
 2. 添加协议解析端口自定义功能
+   <img width="942" height="300" alt="image" src="https://github.com/user-attachments/assets/fbc647ef-f4bf-4f67-9736-f2ef361e43cf" />
+
+### 注意
+由于 wireshark 4.6 版本有内置DLMS协议解析, 故该插件注册的协议名为 DLMS-PL, 过滤器语法也为 dlms-pl
+
+另外，使用插件时需把内置的DLMS协议解析禁用，见下图
+<img width="950" height="230" alt="image" src="https://github.com/user-attachments/assets/0b058713-c8eb-4d55-a895-31451b9c34c3" />
