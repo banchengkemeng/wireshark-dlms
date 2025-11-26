@@ -42,6 +42,15 @@ register_plugin_files(plugin.c
 
 add_wireshark_plugin_library(dlms epan)
 
+target_compile_features(dlms PRIVATE cxx_std_20)
+target_compile_options(dlms PRIVATE /WX-)
+target_compile_options(dlms PRIVATE /W0)
+
+if (MSVC)
+    target_compile_options(dlms PRIVATE /std:c++20)
+    target_compile_options(dlms PRIVATE /WX-)
+endif()
+
 message(STATUS "GCRYPT_INCLUDE_DIR: ${GCRYPT_INCLUDE_DIR}")
 message(STATUS "GCRYPT_LIBRARY: ${GCRYPT_LIBRARY}")
 

@@ -16,7 +16,7 @@ dlms_decompress(uint8_t *data, gint length, uint8_t *& decompressed)
 {
     // decompress here
     g_print("Compression is not supported\n");
-    decompressed = (uint8_t *)wmem_alloc(wmem_packet_scope(), length);
+    decompressed = (uint8_t *)wmem_alloc(wmem_epan_scope(), length);
     memcpy(decompressed, data, length);
     return length;
 }
@@ -29,38 +29,38 @@ dlms_decrypt_ciphered_apdu(const dlms_ciphered_apdu * apdu, const uint8_t *key, 
     uint8_t * plaintext = NULL;
 
     ((uint8_t *)aad)[0] = apdu->sh.security_control_byte;
-    uint8_t * iv = (uint8_t *)wmem_alloc(wmem_packet_scope(), IV_LEN);
+    uint8_t * iv = (uint8_t *)wmem_alloc(wmem_epan_scope(), IV_LEN);
     memcpy(iv, system_title, 8);
     for (int i = 0; i < 4; i++) {
         iv[i + 8] = (apdu->sh.invocation_counter >> (24 - i * 8)) & 0xff;
     }
 
     if (apdu->sh.encrypted) {
-        plaintext = (uint8_t *)wmem_alloc(wmem_packet_scope(), apdu->text_len);
+        plaintext = (uint8_t *)wmem_alloc(wmem_epan_scope(), apdu->text_len);
         AES_128_GCM aes(key, iv);
         len = aes.Decrypt(apdu->ciphertext, apdu->text_len, plaintext, apdu->authentication_tag, aad, AAD_LEN);
         if (len < 0) {
             g_print("Failed to decrypt GLO ciphered APDU\n");
-            wmem_free(wmem_packet_scope(), plaintext);
+            wmem_free(wmem_epan_scope(), plaintext);
             delete[] iv;
             return 0;
         }
     }
     else {
-        plaintext = (uint8_t *)wmem_alloc(wmem_packet_scope(), apdu->text_len);
+        plaintext = (uint8_t *)wmem_alloc(wmem_epan_scope(), apdu->text_len);
         memcpy(plaintext, apdu->information, apdu->text_len);
     }
     if (apdu->sh.compressed) {
         uint8_t * compressed = plaintext;
         plaintext = NULL;
         len = dlms_decompress(compressed, len, plaintext);
-        wmem_free(wmem_packet_scope(), compressed);
+        wmem_free(wmem_epan_scope(), compressed);
     }
 
     tvbuff_t * tvb_plain = tvb_new_real_data(plaintext, len, len);
     add_new_data_source(pinfo, tvb_plain, "Decrypted Data");
-    wmem_free(wmem_packet_scope(), plaintext);
-    wmem_free(wmem_packet_scope(), iv);
+    wmem_free(wmem_epan_scope(), plaintext);
+    wmem_free(wmem_epan_scope(), iv);
     return tvb_plain;
 }
 

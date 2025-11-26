@@ -29,6 +29,8 @@
 #include "services/dlms-access.h"
 #include "services/dlms-notification.h"
 
+#include "epan/range.h"
+
 void
 dlms_dissect_exception_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offset)
 {
@@ -392,6 +394,49 @@ const char* glo_KEY_str;
 const char* ciph_AAD_str;
 const char* ded_KEY_str;
 
+range_t* glo_udp_ports = nullptr;
+range_t* glo_tcp_ports = nullptr;
+dissector_handle_t g_dlms_handle = nullptr;
+
+range_t*
+range_from_str(const char* s)
+{
+    range_t* rng = nullptr;
+    if (!s || !*s) return rng;
+
+    gchar** parts = g_strsplit(s, ",", 0);
+    for (int i = 0; parts[i]; i++) {
+        gchar** lohi = g_strsplit(parts[i], "-", 0);
+        guint low = (guint)atoi(lohi[0]);
+        guint high = lohi[1] ? (guint)atoi(lohi[1]) : low;
+
+        range_add_value(wmem_epan_scope(), &rng, low);
+        if (high != low)
+            range_add_value(wmem_epan_scope(), &rng, high);
+        g_strfreev(lohi);
+    }
+    g_strfreev(parts);
+    return rng;
+}
+
+void
+dlms_ports_apply()
+{
+    if (!g_dlms_handle) return;
+
+    // udp
+    dissector_delete_all("udp.port", g_dlms_handle);
+    range_foreach(glo_udp_ports, [](guint port, gpointer) {
+        dissector_add_uint("udp.port", port, g_dlms_handle);
+        }, nullptr);
+
+    // tcp
+    dissector_delete_all("tcp.port", g_dlms_handle);
+    range_foreach(glo_tcp_ports, [](guint port, gpointer) {
+        dissector_add_uint("tcp.port", port, g_dlms_handle);
+        }, nullptr);
+}
+
 void dlms_prefs_cb() {
     if (strlen(glo_KEY_str) != 32 || strlen(ded_KEY_str) != 32 || strlen(ciph_AAD_str) != 32) {
         return;
@@ -399,6 +444,8 @@ void dlms_prefs_cb() {
     hex_to_uint8(glo_KEY_str, glo_KEY, 16);
     hex_to_uint8(ded_KEY_str, ded_KEY, 16);
     hex_to_uint8(ciph_AAD_str, ciph_AAD, 16);
+
+    dlms_ports_apply();
 }
 
 void
@@ -408,7 +455,7 @@ dlms_register_protoinfo(void)
     register_foo();
     return;
 #endif
-    dlms_proto = proto_register_protocol("Device Language Message Specification", "DLMS", "dlms");
+    dlms_proto = proto_register_protocol("Device Language Message Specification (Plugin)", "DLMS-PL", "dlms-pl");
 
     /* Register the dlms_hdr header field info structures */
     proto_register_field_array(dlms_proto, (hf_register_info *)&dlms_hdr, sizeof(DLMSHeaderInfo) / sizeof(hf_register_info));
@@ -464,6 +511,14 @@ dlms_register_protoinfo(void)
     prefs_register_string_preference(dlms_module, "glo_key", "Global Key", "Global key for ciphering and deciphering", &glo_KEY_str);
     prefs_register_string_preference(dlms_module, "glo_aad", "Additional Authenticated Data", "Additional authenticated data for ciphering and deciphering", &ciph_AAD_str);
     prefs_register_string_preference(dlms_module, "ded_key", "Dedicated Key", "Dedicated key for ciphering and deciphering", &ded_KEY_str);
+
+
+    const char* default_ports = "4059,2046";
+    glo_udp_ports = range_from_str(default_ports);
+    glo_tcp_ports = range_from_str(default_ports);
+
+    prefs_register_range_preference(dlms_module, "udp.ports", "DLMS UDP Ports", "Comma-separated list/ranges for DLMS-PL", &glo_udp_ports, 65535);
+    prefs_register_range_preference(dlms_module, "tcp.ports", "DLMS TCP Ports", "Comma-separated list/ranges for DLMS-PL", &glo_tcp_ports, 65535);
 }
 
 void
@@ -474,14 +529,18 @@ dlms_reg_handoff(void)
     return;
 #endif
     /* Register the DLMS dissector and the TCP/UDP port assigned by IANA for DLMS */
-    dissector_handle_t dh = register_dissector("DLMS", dlms_dissect, dlms_proto);
+    if (!g_dlms_handle) {
+        g_dlms_handle = register_dissector("DLMS-PL", dlms_dissect, dlms_proto);
+    }
+
+    dlms_ports_apply();
     //dissector_handle_t dh = create_dissector_handle(dlms_dissect, dlms_proto);
-    dissector_add_uint("udp.port", 4059, dh);
+    /*dissector_add_uint("udp.port", 4059, dh);
     dissector_add_uint("tcp.port", 4059, dh);
     for (int i = 4060; i <= 4069; i++) {
         dissector_add_uint("udp.port", i, dh);
         dissector_add_uint("tcp.port", i, dh);
-    }
+    }*/
 }
 
 #ifdef __cplusplus
