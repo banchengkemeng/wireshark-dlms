@@ -398,43 +398,56 @@ range_t* glo_udp_ports = nullptr;
 range_t* glo_tcp_ports = nullptr;
 dissector_handle_t g_dlms_handle = nullptr;
 
-range_t*
-range_from_str(const char* s)
-{
-    range_t* rng = nullptr;
-    if (!s || !*s) return rng;
+void debug_log(const char* format, ...) {
+    va_list ap;
+    va_start(ap, format);
 
-    gchar** parts = g_strsplit(s, ",", 0);
-    for (int i = 0; parts[i]; i++) {
-        gchar** lohi = g_strsplit(parts[i], "-", 0);
-        guint low = (guint)atoi(lohi[0]);
-        guint high = lohi[1] ? (guint)atoi(lohi[1]) : low;
+    ws_log(LOG_DOMAIN_EPAN, LOG_LEVEL_DEBUG, format, ap);
 
-        range_add_value(wmem_epan_scope(), &rng, low);
-        if (high != low)
-            range_add_value(wmem_epan_scope(), &rng, high);
-        g_strfreev(lohi);
-    }
-    g_strfreev(parts);
-    return rng;
+    va_end(ap);
 }
 
 void
 dlms_ports_apply()
 {
-    if (!g_dlms_handle) return;
+    debug_log("Applying DLMS ports preferences");
+    if (g_dlms_handle == nullptr) {
+        debug_log("===================== DLMS HANDLE IS NULL =====================");
+    }
 
-    // udp
-    dissector_delete_all("udp.port", g_dlms_handle);
-    range_foreach(glo_udp_ports, [](guint port, gpointer) {
+    if (glo_udp_ports == nullptr || glo_tcp_ports == nullptr) {
+        debug_log("===================== UDP OR TCP Ports IS NULL ========================.");
+    }
+
+    debug_log("================= UDP,TCP ports: %u, %u", glo_udp_ports->ranges->low, glo_udp_ports->ranges->high);
+
+    debug_log("======================= 1 ==========================");
+
+    // UDP
+    range_foreach(glo_udp_ports, [](guint port, gpointer handle) {
+
+        debug_log("======= Adding UDP port BEFORE: %u ========", port);
+
+        dissector_delete_uint("udp.port", port, NULL);
         dissector_add_uint("udp.port", port, g_dlms_handle);
-        }, nullptr);
 
-    // tcp
-    dissector_delete_all("tcp.port", g_dlms_handle);
-    range_foreach(glo_tcp_ports, [](guint port, gpointer) {
+        debug_log("======= Adding UDP port AFTER: %u ========", port);
+    }, nullptr);
+
+    debug_log("======================= 2 ==========================");
+
+    // TCP
+    range_foreach(glo_tcp_ports, [](guint port, gpointer handle) {
+
+        debug_log("======= Adding TCP port BEFORE: %u ========", port);
+
+        dissector_delete_uint("tcp.port", port, NULL);
         dissector_add_uint("tcp.port", port, g_dlms_handle);
-        }, nullptr);
+
+        debug_log("======= Adding TCP port BEFORE: %u ========", port);
+    }, nullptr);
+
+    debug_log("======================= 3 ==========================");
 }
 
 void dlms_prefs_cb() {
@@ -514,8 +527,8 @@ dlms_register_protoinfo(void)
 
 
     const char* default_ports = "4059,2046";
-    glo_udp_ports = range_from_str(default_ports);
-    glo_tcp_ports = range_from_str(default_ports);
+    range_convert_str(wmem_epan_scope(), &glo_udp_ports, default_ports, 65535);
+    range_convert_str(wmem_epan_scope(), &glo_tcp_ports, default_ports, 65535);
 
     prefs_register_range_preference(dlms_module, "udp.ports", "DLMS UDP Ports", "Comma-separated list/ranges for DLMS-PL", &glo_udp_ports, 65535);
     prefs_register_range_preference(dlms_module, "tcp.ports", "DLMS TCP Ports", "Comma-separated list/ranges for DLMS-PL", &glo_tcp_ports, 65535);
@@ -528,19 +541,22 @@ dlms_reg_handoff(void)
     handoff_foo();
     return;
 #endif
+
     /* Register the DLMS dissector and the TCP/UDP port assigned by IANA for DLMS */
     if (!g_dlms_handle) {
         g_dlms_handle = register_dissector("DLMS-PL", dlms_dissect, dlms_proto);
     }
 
     dlms_ports_apply();
-    //dissector_handle_t dh = create_dissector_handle(dlms_dissect, dlms_proto);
-    /*dissector_add_uint("udp.port", 4059, dh);
-    dissector_add_uint("tcp.port", 4059, dh);
-    for (int i = 4060; i <= 4069; i++) {
-        dissector_add_uint("udp.port", i, dh);
-        dissector_add_uint("tcp.port", i, dh);
-    }*/
+
+    //dissector_handle_t dh = register_dissector("DLMS", dlms_dissect, dlms_proto);
+    ////dissector_handle_t dh = create_dissector_handle(dlms_dissect, dlms_proto);
+    //dissector_add_uint("udp.port", 4059, dh);
+    //dissector_add_uint("tcp.port", 4059, dh);
+    //for (int i = 4060; i <= 4069; i++) {
+    //    dissector_add_uint("udp.port", i, dh);
+    //    dissector_add_uint("tcp.port", i, dh);
+    //}
 }
 
 #ifdef __cplusplus
